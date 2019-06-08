@@ -35,39 +35,7 @@ impl List {
 #[global_allocator]
 static ALLOC: Jemalloc = jemallocator::Jemalloc;
 
-fn smoke_one() {
-    let layout = Layout::from_size_align(1000, 8).unwrap();
-    unsafe {
-        let ptr = Jemalloc.alloc(layout.clone());
-        assert!(!ptr.is_null());
-        //Jemalloc.dealloc(ptr, layout);
-    }
-}
-
-fn smoke_two() {
-    unsafe {
-        let ptr = jemalloc_sys::malloc(4);
-        *(ptr as *mut u32) = 0xDECADE;
-        assert_eq!(*(ptr as *mut u32), 0xDECADE);
-        jemalloc_sys::free(ptr);
-        *(ptr as *mut u32) = 0xDECADE;
-    }
-}
-
-fn smoke_three() {
-    let s = String::from("hello");
-    let ptr = s.as_ptr();
-    let handler = ptr as u64;
-    let len = s.len();
-    let capacity = s.capacity();
-    mem::forget(s);
-
-    let s_new = unsafe { String::from_raw_parts(ptr as *mut _, len, capacity) };
-    let s_new2 = unsafe { String::from_raw_parts(ptr as *mut _, len, capacity) };
-}
-
-fn main() {
-    println!("Hello, world!");
+fn smoke_ref() {
     let a = Rc::new(Cons(5, RefCell::new(Rc::new(Nil))));
 
     println!("a initial rc count = {}", Rc::strong_count(&a));
@@ -85,18 +53,64 @@ fn main() {
 
     println!("b rc count after changing a = {}", Rc::strong_count(&b));
     println!("a rc count after changing a = {}", Rc::strong_count(&a));
+}
+
+fn smoke_one() {
+    let layout = Layout::from_size_align(1000, 8).unwrap();
+    unsafe {
+        let ptr = Jemalloc.alloc(layout.clone());
+        assert!(!ptr.is_null());
+        Jemalloc.dealloc(ptr, layout);
+        Jemalloc.dealloc(ptr, layout);
+    }
+}
+
+fn smoke_two() {
+    unsafe {
+        let ptr = jemalloc_sys::malloc(4);
+        *(ptr as *mut u32) = 0xDECADE;
+        assert_eq!(*(ptr as *mut u32), 0xDECADE);
+        jemalloc_sys::free(ptr);
+        *(ptr as *mut u32) = 0xDECADE;
+    }
+}
+
+fn smoke_three() {
+    unsafe {
+        let ptr = jemalloc_sys::malloc(4);
+        *(ptr as *mut u32) = 0xDECADE;
+        assert_eq!(*(ptr as *mut u32), 0xDECADE);
+        jemalloc_sys::free(ptr);
+        jemalloc_sys::free(ptr);
+    }
+}
 
 
+fn smoke_four() {
+    let s = String::from("hello");
+    let ptr = s.as_ptr();
+    let handler = ptr as u64;
+    let len = s.len();
+    let capacity = s.capacity();
+    mem::forget(s);
 
+    let s_new = unsafe { String::from_raw_parts(ptr as *mut _, len, capacity) };
+    let s_new2 = unsafe { String::from_raw_parts(ptr as *mut _, len, capacity) };
+}
+
+fn main() {
     for _i in 1..5 {
         // many statistics are cached and only updated when the epoch is advanced.
         jemalloc_ctl::epoch().unwrap();
         smoke_one();
         smoke_two();
         smoke_three();
+        //smoke_four();
         let allocated = jemalloc_ctl::stats::allocated().unwrap();
+        let dropped = jemalloc_ctl::stats::retained().unwrap();
         let resident = jemalloc_ctl::stats::resident().unwrap();
         println!("{} bytes allocated/{} bytes resident", allocated, resident);
+        println!("{} bytes retained", dropped);
         thread::sleep(Duration::from_secs(1));
     }
 }
